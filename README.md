@@ -1,36 +1,256 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Expense Tracker — Next.js Learning Project
+
+A full-stack Expense Tracker app built step-by-step to learn **Next.js 14** with the App Router.
+
+## Tech Stack
+
+| Layer | Tool |
+|-------|------|
+| Framework | Next.js 14 (App Router) |
+| Language | TypeScript |
+| Styling | Tailwind CSS |
+| Database | SQLite via Prisma ORM |
+| Auth | NextAuth.js |
+| Charts | Recharts |
+
+---
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Concepts Covered
 
-## Learn More
+### 1. Project Setup
+**What:** Scaffolding a Next.js app using `create-next-app`.
 
-To learn more about Next.js, take a look at the following resources:
+**Key files created:**
+- `src/app/layout.tsx` — root layout (wraps all pages)
+- `src/app/page.tsx` — home page mapped to "/"
+- `next.config.ts` — Next.js configuration
+- `tailwind.config.mjs` — Tailwind CSS configuration
+- `tsconfig.json` — TypeScript configuration
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Key learning:** Next.js uses the `src/app/` directory as the root of your application. There is no `index.html` — Next.js handles HTML generation automatically.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+### 2. App Router & File-based Routing
+**What:** In Next.js, the **folder structure defines the URL routes**. No router configuration needed.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**How it works:**
+```
+src/app/page.tsx              →  /
+src/app/dashboard/page.tsx    →  /dashboard
+src/app/add-expense/page.tsx  →  /add-expense
+src/app/history/page.tsx      →  /history
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Every route folder needs a `page.tsx` file to be accessible as a URL.
+
+**Comparison with React Router:**
+```jsx
+// React (manual router config)
+<Route path="/dashboard" element={<Dashboard />} />
+
+// Next.js (just create the folder + file)
+src/app/dashboard/page.tsx  ← that's it
+```
+
+**Types of routing available in Next.js:**
+
+| Type | Syntax | Example URL |
+|------|--------|-------------|
+| Static | `page.tsx` | `/dashboard` |
+| Dynamic | `[id]/page.tsx` | `/expenses/123` |
+| Nested | `a/b/page.tsx` | `/dashboard/settings` |
+| Catch-all | `[...slug]/page.tsx` | `/docs/a/b/c` |
+| Optional catch-all | `[[...slug]]/page.tsx` | `/docs` or `/docs/a/b` |
+| Route Groups | `(group)/page.tsx` | `/login` (group name hidden from URL) |
+| Parallel | `@slot/page.tsx` | Side-by-side views |
+| Intercepting | `(..)route/page.tsx` | Modal-style overlays |
+
+---
+
+### 3. Layout System
+**What:** `layout.tsx` wraps every page in your app. Anything placed inside it (Navbar, Footer) appears on all pages.
+
+**How it works:**
+```tsx
+// src/app/layout.tsx
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        <Navbar />
+        <main>{children}</main>  {/* ← active page renders here */}
+      </body>
+    </html>
+  )
+}
+```
+
+**Nested layouts:** Each folder can have its own `layout.tsx` that wraps only that section's pages — without affecting the rest of the app.
+
+---
+
+### 4. Server Components vs Client Components
+**What:** Next.js introduces two types of components. This is one of the biggest differences from plain React.
+
+**Server Components (default):**
+- Run only on the server — never sent to the browser as JS
+- Can directly fetch data, access databases, read environment variables
+- Cannot use `useState`, `useEffect`, or browser APIs
+- No `'use client'` directive needed
+
+```tsx
+// Server Component — runs on the server
+export default async function Dashboard() {
+  const data = await fetch('/api/expenses') // direct async call, no useEffect needed
+  return <div>{data}</div>
+}
+```
+
+**Client Components:**
+- Run in the browser (like regular React components)
+- Can use `useState`, `useEffect`, event handlers
+- Must have `'use client'` at the top of the file
+
+```tsx
+'use client'  // ← opt in to client-side rendering
+
+import { useState } from 'react'
+
+export default function ExpenseForm() {
+  const [amount, setAmount] = useState('')
+  return <input value={amount} onChange={e => setAmount(e.target.value)} />
+}
+```
+
+**Rule of thumb:** Start with Server Components. Add `'use client'` only when you need interactivity.
+
+---
+
+### 5. Rendering Strategies
+**What:** Next.js lets you choose how and when each page's HTML is generated.
+
+| Strategy | When HTML is built | Data freshness | Best for |
+|----------|--------------------|----------------|----------|
+| **CSR** (Client-Side) | In the browser | Always fresh | Highly interactive UI |
+| **SSR** (Server-Side) | On the server, per request | Always fresh | Live data (expense list) |
+| **SSG** (Static Generation) | At build time, once | Stale until rebuild | Rarely changing data |
+| **ISR** (Incremental Static Regen) | Build time + every N seconds | Fresh every interval | Dashboards, summaries |
+
+**How to control it (via `fetch` cache options):**
+```tsx
+// SSR — fresh on every request
+fetch(url, { cache: 'no-store' })
+
+// SSG — cached forever, built once
+fetch(url, { cache: 'force-cache' })
+
+// ISR — rebuilt every 60 seconds
+fetch(url, { next: { revalidate: 60 } })
+```
+
+---
+
+### 6. Navigation with `<Link>`
+**What:** Use Next.js `<Link>` instead of `<a>` tags for internal navigation.
+
+```tsx
+import Link from 'next/link'
+
+// Client-side navigation — no full page reload
+<Link href="/dashboard">Dashboard</Link>
+
+// vs regular anchor — causes full page reload
+<a href="/dashboard">Dashboard</a>
+```
+
+**Why `<Link>` is better:**
+- No full page reload — only changed content is updated
+- Automatically prefetches pages when the link is visible
+- Preserves React state across navigation
+
+---
+
+### 7. Metadata & SEO
+**What:** Next.js has a built-in `metadata` API to set `<title>`, `<meta>` tags, and Open Graph data.
+
+```tsx
+// In layout.tsx — applies to all pages
+export const metadata = {
+  title: 'Expense Tracker',
+  description: 'Track your income and expenses easily',
+}
+
+// In a specific page.tsx — overrides the layout's title
+export const metadata = {
+  title: 'Dashboard | Expense Tracker',
+}
+```
+
+---
+
+### 8. Redirect
+**What:** `redirect()` from `next/navigation` sends the user to another page server-side.
+
+```tsx
+import { redirect } from 'next/navigation'
+
+export default function Home() {
+  redirect('/dashboard')  // user visiting "/" is sent to "/dashboard"
+}
+```
+
+This is the Next.js equivalent of `<Navigate to="/dashboard" />` in React Router.
+
+---
+
+## Project Structure
+
+```
+expense-tracker/
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx          ← Root layout (Navbar, global styles)
+│   │   ├── page.tsx            ← "/" — redirects to /dashboard
+│   │   ├── globals.css         ← Global CSS + color variables
+│   │   ├── dashboard/
+│   │   │   └── page.tsx        ← "/dashboard"
+│   │   ├── add-expense/
+│   │   │   └── page.tsx        ← "/add-expense"
+│   │   └── history/
+│   │       └── page.tsx        ← "/history"
+│   └── components/
+│       └── Navbar.tsx          ← Shared navigation bar
+├── public/                     ← Static assets
+├── next.config.ts              ← Next.js config
+├── tailwind.config.mjs         ← Tailwind config
+└── tsconfig.json               ← TypeScript config
+```
+
+---
+
+## Roadmap
+
+| Step | Topic | Status |
+|------|-------|--------|
+| 1 | Project Setup | Done |
+| 2 | Pages & File-based Routing | Done |
+| 3 | Layouts & Navbar | Done |
+| 4 | Rendering Strategies | Done (theory) |
+| 5 | Add Expense Form (Client Components) | Upcoming |
+| 6 | API Routes | Upcoming |
+| 7 | Database with Prisma | Upcoming |
+| 8 | Connect UI to Database | Upcoming |
+| 9 | Authentication with NextAuth | Upcoming |
+| 10 | Charts with Recharts | Upcoming |

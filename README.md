@@ -215,6 +215,31 @@ This is the Next.js equivalent of `<Navigate to="/dashboard" />` in React Router
 
 ---
 
+### 5. Add Expense Form (Client Components)
+**What:** The Add Expense page uses a Client Component (`ExpenseForm`) for the interactive form, while the page itself stays a Server Component to keep the `metadata` export.
+
+**Key files created:**
+- `src/components/ExpenseForm.tsx` — Client Component with form state, validation, and submit handler
+
+**How it's structured:**
+```
+add-expense/page.tsx   ← Server Component (keeps metadata export)
+  └── <ExpenseForm />  ← Client Component ('use client' — handles state & events)
+```
+
+**Key learning:** You don't need the whole page to be a Client Component. Keep the page as a Server Component and push `'use client'` down to only the interactive part. This minimises the client JS bundle.
+
+**Form fields:**
+- Type toggle (Expense / Income) — drives category options and button color
+- Amount — validated, prefixed with `$`
+- Category — options differ per type
+- Date — defaults to today
+- Description — optional free text
+
+**Submit behaviour (Step 5):** Logs form data to `console.log`. A real `POST /api/expenses` call is wired up in Step 6.
+
+---
+
 ## Project Structure
 
 ```
@@ -248,7 +273,7 @@ expense-tracker/
 | 2 | Pages & File-based Routing | Done |
 | 3 | Layouts & Navbar | Done |
 | 4 | Rendering Strategies | Done (theory) |
-| 5 | Add Expense Form (Client Components) | Upcoming |
+| 5 | Add Expense Form (Client Components) | Done |
 | 6 | API Routes | Upcoming |
 | 7 | Database with Prisma | Upcoming |
 | 8 | Connect UI to Database | Upcoming |

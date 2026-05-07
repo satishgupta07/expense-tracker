@@ -31,11 +31,14 @@ export default function ExpenseForm() {
   const [form, setForm] = useState<FormState>(initialState)
   const [submitted, setSubmitted] = useState(false)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
+  const [submitting, setSubmitting] = useState(false)
+  const [apiError, setApiError] = useState<string | null>(null)
 
   function handleTypeToggle(type: TransactionType) {
     setForm({ ...initialState, type, date: form.date })
     setErrors({})
     setSubmitted(false)
+    setApiError(null)
   }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
@@ -61,22 +64,41 @@ export default function ExpenseForm() {
     return Object.keys(next).length === 0
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!validate()) return
 
-    // Step 6 will replace this with a real API call to POST /api/expenses
-    console.log('New transaction:', {
-      type: form.type,
-      amount: parseFloat(form.amount),
-      category: form.category,
-      date: form.date,
-      description: form.description.trim(),
-    })
+    setSubmitting(true)
+    setApiError(null)
+    setSubmitted(false)
 
-    setSubmitted(true)
-    setForm({ ...initialState, type: form.type })
-    setErrors({})
+    try {
+      const res = await fetch('/api/expenses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: form.type,
+          amount: parseFloat(form.amount),
+          category: form.category,
+          date: form.date,
+          description: form.description.trim(),
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setApiError(data?.error ?? `Request failed (${res.status})`)
+        return
+      }
+
+      setSubmitted(true)
+      setForm({ ...initialState, type: form.type })
+      setErrors({})
+    } catch {
+      setApiError('Network error — please try again')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const isIncome = form.type === 'income'
@@ -89,7 +111,15 @@ export default function ExpenseForm() {
         {submitted && (
           <div className="mb-6 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-emerald-700 text-sm font-medium">
             <span>✓</span>
-            <span>Transaction saved! (API wired up in Step 6)</span>
+            <span>Transaction saved.</span>
+          </div>
+        )}
+
+        {/* API error banner */}
+        {apiError && (
+          <div className="mb-6 flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-rose-700 text-sm font-medium">
+            <span>!</span>
+            <span>{apiError}</span>
           </div>
         )}
 
@@ -206,13 +236,14 @@ export default function ExpenseForm() {
         {/* Submit */}
         <button
           type="submit"
-          className={`w-full py-3 rounded-xl font-semibold text-white text-sm transition-all shadow-sm active:scale-[.98] ${
+          disabled={submitting}
+          className={`w-full py-3 rounded-xl font-semibold text-white text-sm transition-all shadow-sm active:scale-[.98] disabled:opacity-60 disabled:cursor-not-allowed ${
             isIncome
               ? 'bg-emerald-500 hover:bg-emerald-400'
               : 'bg-violet-600 hover:bg-violet-500'
           }`}
         >
-          {isIncome ? 'Add Income' : 'Add Expense'}
+          {submitting ? 'Saving…' : isIncome ? 'Add Income' : 'Add Expense'}
         </button>
 
       </div>

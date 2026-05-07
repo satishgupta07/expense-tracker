@@ -240,23 +240,67 @@ add-expense/page.tsx   ← Server Component (keeps metadata export)
 
 ---
 
+### 6. API Routes (Route Handlers)
+**What:** In the App Router, backend endpoints are **Route Handlers** — `route.ts` files placed inside `src/app/`. This replaces the old `pages/api` convention from the Pages Router.
+
+**Key files created:**
+- `src/app/api/expenses/route.ts` — `GET` (list) and `POST` (create) for `/api/expenses`
+- `src/lib/transactions.ts` — in-memory store + validation (will be replaced by Prisma in Step 7)
+
+**How Route Handlers work:**
+```ts
+// src/app/api/expenses/route.ts
+export async function GET() {
+  return Response.json(listTransactions())
+}
+
+export async function POST(request: Request) {
+  const body = await request.json()
+  // validate & create…
+  return Response.json(created, { status: 201 })
+}
+```
+
+Each named export (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`) maps to that HTTP verb. Unsupported methods return 405 automatically.
+
+**Rules to remember:**
+- Route Handlers use the standard Web `Request` and `Response` APIs
+- A `route.ts` and `page.tsx` **cannot** live in the same folder (they'd conflict on the same URL)
+- `Response.json(data, { status })` is the easiest way to send a JSON response with a status code
+- Route Handlers are **not cached by default** — opt in with `export const dynamic = 'force-static'`
+
+**Form ↔ API integration:**
+The Add Expense form now calls the API instead of just logging to console:
+```ts
+await fetch('/api/expenses', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload),
+})
+```
+The form also handles loading state (button disabled + "Saving…") and surfaces server-side validation errors in a banner.
+
+---
+
 ## Project Structure
 
 ```
 expense-tracker/
 ├── src/
 │   ├── app/
-│   │   ├── layout.tsx          ← Root layout (Navbar, global styles)
-│   │   ├── page.tsx            ← "/" — redirects to /dashboard
-│   │   ├── globals.css         ← Global CSS + color variables
-│   │   ├── dashboard/
-│   │   │   └── page.tsx        ← "/dashboard"
-│   │   ├── add-expense/
-│   │   │   └── page.tsx        ← "/add-expense"
-│   │   └── history/
-│   │       └── page.tsx        ← "/history"
-│   └── components/
-│       └── Navbar.tsx          ← Shared navigation bar
+│   │   ├── layout.tsx              ← Root layout (Navbar, global styles)
+│   │   ├── page.tsx                ← "/" — redirects to /dashboard
+│   │   ├── globals.css             ← Global CSS + color variables
+│   │   ├── dashboard/page.tsx      ← "/dashboard"
+│   │   ├── add-expense/page.tsx    ← "/add-expense"
+│   │   ├── history/page.tsx        ← "/history"
+│   │   └── api/
+│   │       └── expenses/route.ts   ← GET + POST /api/expenses
+│   ├── components/
+│   │   ├── Navbar.tsx              ← Shared navigation bar
+│   │   └── ExpenseForm.tsx         ← Client Component form
+│   └── lib/
+│       └── transactions.ts         ← In-memory store (→ Prisma in Step 7)
 ├── public/                     ← Static assets
 ├── next.config.ts              ← Next.js config
 ├── tailwind.config.mjs         ← Tailwind config
@@ -274,7 +318,7 @@ expense-tracker/
 | 3 | Layouts & Navbar | Done |
 | 4 | Rendering Strategies | Done (theory) |
 | 5 | Add Expense Form (Client Components) | Done |
-| 6 | API Routes | Upcoming |
+| 6 | API Routes (Route Handlers) | Done |
 | 7 | Database with Prisma | Upcoming |
 | 8 | Connect UI to Database | Upcoming |
 | 9 | Authentication with NextAuth | Upcoming |

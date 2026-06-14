@@ -401,6 +401,56 @@ By default, Next 16 may try to **prerender** a Server Component at build time. A
 
 ---
 
+### 8b. History Filters + Delete
+**What:** Layer two missing features onto `/history`: filter by type/category/date range, and delete a transaction inline.
+
+**Key files created / changed:**
+- `src/app/api/expenses/[id]/route.ts` — `DELETE` Route Handler for one transaction
+- `src/components/HistoryFilters.tsx` — server-rendered filter form
+- `src/components/DeleteTransactionButton.tsx` — Client Component
+- `src/lib/transactions.ts` — `listTransactions(filters)` + `deleteTransaction(id)`
+- `src/app/history/page.tsx` — reads `searchParams`, passes filters down, enables Delete
+
+**Dynamic segments — `[id]`:**
+```
+src/app/api/expenses/[id]/route.ts  →  /api/expenses/:id
+```
+Folder names in square brackets become URL params. In Next 16, `params` arrives as a Promise (typed by the auto-generated `RouteContext<'/api/expenses/[id]'>` helper):
+```ts
+export async function DELETE(_req: Request, ctx: RouteContext<'/api/expenses/[id]'>) {
+  const { id } = await ctx.params
+  await deleteTransaction(id)
+  return new Response(null, { status: 204 })
+}
+```
+
+**Filtering via URL search params (no JavaScript needed):**
+```tsx
+<form method="get" action="/history">
+  <select name="type">...</select>
+  <select name="category">...</select>
+  <input type="date" name="from" />
+  <input type="date" name="to" />
+  <button>Apply</button>
+</form>
+```
+Submitting the form navigates to `/history?type=expense&category=Food&from=…&to=…`. The page is a Server Component that reads those values from `searchParams` and passes them to `listTransactions(filters)`. Filtering is done in SQL via Prisma's `where`, so the database only sends back matching rows.
+
+> **Good to know:** In Next 16, `searchParams` is a Promise too — `await` it before reading. The same is true of `cookies()`, `headers()`, and dynamic `params`.
+
+**Optimistic refresh after Delete:**
+```tsx
+'use client'
+import { useRouter } from 'next/navigation'
+
+const router = useRouter()
+await fetch(`/api/expenses/${id}`, { method: 'DELETE' })
+router.refresh()    // re-runs Server Component data fetch — no full reload
+```
+`router.refresh()` is the App Router equivalent of "refetch this page on the server, then patch the DOM." The row disappears in place.
+
+---
+
 ## Project Structure
 
 ```
@@ -418,11 +468,15 @@ expense-tracker/
 │   │   ├── add-expense/page.tsx    ← "/add-expense"
 │   │   ├── history/page.tsx        ← "/history"
 │   │   └── api/
-│   │       └── expenses/route.ts   ← GET + POST /api/expenses
+│   │       └── expenses/
+│   │           ├── route.ts        ← GET + POST /api/expenses
+│   │           └── [id]/route.ts   ← DELETE /api/expenses/:id
 │   ├── components/
-│   │   ├── Navbar.tsx              ← Shared navigation bar
-│   │   ├── ExpenseForm.tsx         ← Client Component form
-│   │   └── TransactionList.tsx     ← Shared list (Server Component)
+│   │   ├── Navbar.tsx                  ← Shared navigation bar
+│   │   ├── ExpenseForm.tsx             ← Client Component form
+│   │   ├── TransactionList.tsx         ← Shared list (Server Component)
+│   │   ├── HistoryFilters.tsx          ← Filter form (Server Component)
+│   │   └── DeleteTransactionButton.tsx ← Per-row delete (Client Component)
 │   ├── generated/
 │   │   └── prisma/                 ← Generated Prisma client (gitignored)
 │   └── lib/
@@ -448,6 +502,7 @@ expense-tracker/
 | 5 | Add Expense Form (Client Components) | Done |
 | 6 | API Routes (Route Handlers) | Done |
 | 7 | Database with Prisma | Done |
-| 8 | Connect UI to Database | Done (read-only — filter + delete deferred to 8b) |
+| 8 | Connect UI to Database | Done (read-only) |
+| 8b | History filters + delete | Done |
 | 9 | Authentication with NextAuth | Upcoming |
 | 10 | Charts with Recharts | Upcoming |

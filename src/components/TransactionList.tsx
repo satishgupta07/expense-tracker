@@ -10,6 +10,7 @@
  * yet" on the history page).
  */
 
+import DeleteTransactionButton from './DeleteTransactionButton'
 import type { Transaction } from '@/lib/transactions'
 
 const currency = new Intl.NumberFormat('en-US', {
@@ -20,9 +21,12 @@ const currency = new Intl.NumberFormat('en-US', {
 interface Props {
   transactions: Transaction[]
   emptyMessage?: { title: string; subtitle?: string; icon?: string }
+  // When true, each row gets a Delete button. Off by default so the dashboard
+  // (read-only) doesn't accidentally let users delete from a summary view.
+  showDelete?: boolean
 }
 
-export default function TransactionList({ transactions, emptyMessage }: Props) {
+export default function TransactionList({ transactions, emptyMessage, showDelete = false }: Props) {
   if (transactions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-slate-400">
@@ -60,14 +64,17 @@ export default function TransactionList({ transactions, emptyMessage }: Props) {
                 </p>
               </div>
             </div>
-            <span
-              className={`text-sm font-semibold tabular-nums ${
-                isIncome ? 'text-emerald-600' : 'text-rose-500'
-              }`}
-            >
-              {isIncome ? '+' : '−'}
-              {currency.format(t.amount)}
-            </span>
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-sm font-semibold tabular-nums ${
+                  isIncome ? 'text-emerald-600' : 'text-rose-500'
+                }`}
+              >
+                {isIncome ? '+' : '−'}
+                {currency.format(t.amount)}
+              </span>
+              {showDelete && <DeleteTransactionButton id={t.id} />}
+            </div>
           </li>
         )
       })}

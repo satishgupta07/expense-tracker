@@ -28,10 +28,34 @@ export interface NewTransactionInput {
   description?: unknown
 }
 
-export async function listTransactions(): Promise<Transaction[]> {
+export interface TransactionFilters {
+  type?: TransactionType
+  category?: string
+  from?: string // YYYY-MM-DD (inclusive)
+  to?: string   // YYYY-MM-DD (inclusive)
+}
+
+// All filters are optional. Empty strings (the natural value of an unset
+// `<select>` or text input) are treated the same as `undefined`. Filtering
+// happens in SQL so we don't pull every row into Node.
+export async function listTransactions(filters: TransactionFilters = {}): Promise<Transaction[]> {
+  const where: Record<string, unknown> = {}
+  if (filters.type === 'income' || filters.type === 'expense') where.type = filters.type
+  if (filters.category && filters.category.length > 0) where.category = filters.category
+  if (filters.from || filters.to) {
+    const date: { gte?: string; lte?: string } = {}
+    if (filters.from) date.gte = filters.from
+    if (filters.to) date.lte = filters.to
+    where.date = date
+  }
   return prisma.transaction.findMany({
+    where,
     orderBy: { createdAt: 'desc' },
   })
+}
+
+export async function deleteTransaction(id: string): Promise<void> {
+  await prisma.transaction.delete({ where: { id } })
 }
 
 export interface DashboardStats {

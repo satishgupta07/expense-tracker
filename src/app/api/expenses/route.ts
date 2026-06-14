@@ -7,6 +7,11 @@
  *
  *   GET  /api/expenses → list all transactions (newest first)
  *   POST /api/expenses → create a new transaction
+ *
+ * Step 7 change: the helpers from `@/lib/transactions` are now async because
+ * they hit SQLite via Prisma. We `await` them here — nothing else changes.
+ * Route Handlers aren't cached by default in Next 16 (GET only opts in via
+ * `dynamic = 'force-static'`), so each request reads fresh data.
  */
 
 import {
@@ -16,7 +21,7 @@ import {
 } from '@/lib/transactions'
 
 export async function GET() {
-  return Response.json(listTransactions())
+  return Response.json(await listTransactions())
 }
 
 export async function POST(request: Request) {
@@ -36,6 +41,6 @@ export async function POST(request: Request) {
     return Response.json({ error }, { status: 400 })
   }
 
-  const created = createTransaction(body as Parameters<typeof createTransaction>[0])
+  const created = await createTransaction(body as Parameters<typeof createTransaction>[0])
   return Response.json(created, { status: 201 })
 }

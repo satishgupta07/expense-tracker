@@ -1,0 +1,38 @@
+// Prisma schema — https://pris.ly/d/prisma-schema
+//
+// `prisma-client` is the new (Prisma 7+) generator. It writes a fully-typed
+// client into a folder we pick (`output`) instead of the legacy
+// `@prisma/client` package. The folder is gitignored — regenerated on every
+// `prisma generate`.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// Prisma 7 moved the connection URL out of the schema and into
+// prisma.config.ts (`datasource.url`). Only `provider` lives here now.
+datasource db {
+  provider = "sqlite"
+}
+
+// A single income or expense entry.
+//
+// Notes:
+// - `type` is stored as a string ("income" | "expense") because SQLite has
+//   no native enum support. Validation lives in src/lib/transactions.ts.
+// - `date` is the user-picked calendar date (YYYY-MM-DD), kept as a string
+//   so it isn't shifted by timezone conversion.
+// - `createdAt` is the server-side insert time (DateTime — Response.json()
+//   serializes it to an ISO string for the wire).
+model Transaction {
+  id          String   @id @default(uuid())
+  type        String
+  amount      Float
+  category    String
+  date        String
+  description String   @default("")
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}

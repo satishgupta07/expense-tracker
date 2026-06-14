@@ -245,7 +245,7 @@ add-expense/page.tsx   ← Server Component (keeps metadata export)
 
 **Key files created:**
 - `src/app/api/expenses/route.ts` — `GET` (list) and `POST` (create) for `/api/expenses`
-- `src/lib/transactions.ts` — in-memory store + validation (will be replaced by Prisma in Step 7)
+- `src/lib/transactions.ts` — store + validation (in-memory in Step 6, swapped for Prisma in Step 7)
 
 **How Route Handlers work:**
 ```ts
@@ -282,10 +282,93 @@ The form also handles loading state (button disabled + "Saving…") and surfaces
 
 ---
 
+### 7. Database with Prisma (SQLite)
+**What:** Replace the in-memory transaction store with a real database using **Prisma 7** + **SQLite**. The Route Handler doesn't change shape — only the helpers in `src/lib/transactions.ts` become `async`, and the route awaits them.
+
+**Key files created:**
+- `prisma/schema.prisma` — Transaction model
+- `prisma/migrations/<timestamp>_init/migration.sql` — first migration
+- `prisma.config.ts` — Prisma 7 moved connection config out of the schema into this file
+- `prisma/dev.db` — SQLite database file (gitignored)
+- `src/lib/prisma.ts` — singleton PrismaClient
+
+**Prisma 7 — what's different from the older Prisma you may have seen:**
+
+1. **No bundled engine.** You must pick a driver adapter — for local SQLite that's `@prisma/adapter-better-sqlite3` wrapping `better-sqlite3`. The legacy "bundled binary engine" is gone.
+
+2. **`url` no longer lives in the schema.** It moved to `prisma.config.ts`:
+   ```ts
+   // prisma.config.ts
+   export default defineConfig({
+     schema: "prisma/schema.prisma",
+     migrations: { path: "prisma/migrations" },
+     datasource: { url: process.env["DATABASE_URL"] },
+   });
+   ```
+   The schema's `datasource db { }` block only carries the `provider`.
+
+3. **New `prisma-client` generator.** Output goes to a folder you choose (here, `src/generated/prisma`) instead of the legacy `@prisma/client` package. Import the typed client from there:
+   ```ts
+   import { PrismaClient } from '@/generated/prisma/client'
+   ```
+   The generated folder is gitignored — it's rebuilt on every `prisma generate`.
+
+**Singleton pattern (avoids hot-reload connection leaks):**
+```ts
+// src/lib/prisma.ts
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
+import { PrismaClient } from '@/generated/prisma/client'
+
+const g = globalThis as unknown as { prisma?: PrismaClient }
+
+function createClient() {
+  return new PrismaClient({
+    adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! }),
+  })
+}
+
+export const prisma = g.prisma ?? createClient()
+if (process.env.NODE_ENV !== 'production') g.prisma = prisma
+```
+
+**Helpers become async:**
+```ts
+// src/lib/transactions.ts (before — in-memory, sync)
+export function listTransactions() { return [...transactions] }
+
+// after — Prisma, async
+export async function listTransactions() {
+  return prisma.transaction.findMany({ orderBy: { createdAt: 'desc' } })
+}
+```
+
+**Route Handler only adds `await`:**
+```ts
+// src/app/api/expenses/route.ts
+export async function GET() {
+  return Response.json(await listTransactions())
+}
+```
+
+> **Good to know — Next 16:** Route Handlers are **not cached by default**. `GET` can opt in via `export const dynamic = 'force-static'`, but for a transactions list we want fresh data on every request, so we leave the default.
+
+**Useful scripts:**
+```bash
+npm run db:migrate    # create + apply a new migration
+npm run db:generate   # regenerate the Prisma client after schema edits
+npm run db:studio     # browse data in a GUI
+```
+
+---
+
 ## Project Structure
 
 ```
 expense-tracker/
+├── prisma/
+│   ├── schema.prisma           ← Transaction model
+│   ├── migrations/             ← Generated SQL migrations (committed)
+│   └── dev.db                  ← SQLite database (gitignored)
 ├── src/
 │   ├── app/
 │   │   ├── layout.tsx              ← Root layout (Navbar, global styles)
@@ -299,10 +382,14 @@ expense-tracker/
 │   ├── components/
 │   │   ├── Navbar.tsx              ← Shared navigation bar
 │   │   └── ExpenseForm.tsx         ← Client Component form
+│   ├── generated/
+│   │   └── prisma/                 ← Generated Prisma client (gitignored)
 │   └── lib/
-│       └── transactions.ts         ← In-memory store (→ Prisma in Step 7)
+│       ├── prisma.ts               ← PrismaClient singleton
+│       └── transactions.ts         ← Prisma-backed CRUD + validation
 ├── public/                     ← Static assets
 ├── next.config.ts              ← Next.js config
+├── prisma.config.ts            ← Prisma 7 config (schema path, DB url)
 ├── tailwind.config.mjs         ← Tailwind config
 └── tsconfig.json               ← TypeScript config
 ```
@@ -319,7 +406,7 @@ expense-tracker/
 | 4 | Rendering Strategies | Done (theory) |
 | 5 | Add Expense Form (Client Components) | Done |
 | 6 | API Routes (Route Handlers) | Done |
-| 7 | Database with Prisma | Upcoming |
+| 7 | Database with Prisma | Done |
 | 8 | Connect UI to Database | Upcoming |
 | 9 | Authentication with NextAuth | Upcoming |
 | 10 | Charts with Recharts | Upcoming |

@@ -1,23 +1,24 @@
 /**
- * In-memory transaction store.
+ * Transaction store — backed by Prisma + SQLite (Step 7).
  *
- * NOTE: This module is a placeholder for Step 6.
- * Step 7 will replace these helpers with Prisma queries against SQLite,
- * but the public API (listTransactions, createTransaction) will stay the same
- * so the Route Handler doesn't need to change.
+ * The Step 6 version of this file kept transactions in an in-memory array.
+ * Step 7 swaps the storage layer for a real database without changing the
+ * function names, so the Route Handler at src/app/api/expenses/route.ts only
+ * needs to `await` the now-async helpers.
+ *
+ * `validateTransaction` stays synchronous — it inspects the request body
+ * and never touches the database.
  */
+
+import { prisma } from './prisma'
+import type { Transaction as PrismaTransaction } from '@/generated/prisma/client'
 
 export type TransactionType = 'income' | 'expense'
 
-export interface Transaction {
-  id: string
-  type: TransactionType
-  amount: number
-  category: string
-  date: string        // ISO date — YYYY-MM-DD
-  description: string
-  createdAt: string   // ISO timestamp
-}
+// Re-export Prisma's generated row type so callers don't depend on the
+// generated path. `createdAt` is a `Date` here; Response.json() serializes
+// it to an ISO string on the wire.
+export type Transaction = PrismaTransaction
 
 export interface NewTransactionInput {
   type: unknown
@@ -27,25 +28,22 @@ export interface NewTransactionInput {
   description?: unknown
 }
 
-const transactions: Transaction[] = []
-
-export function listTransactions(): Transaction[] {
-  // Newest first
-  return [...transactions].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+export async function listTransactions(): Promise<Transaction[]> {
+  return prisma.transaction.findMany({
+    orderBy: { createdAt: 'desc' },
+  })
 }
 
-export function createTransaction(input: NewTransactionInput): Transaction {
-  const t: Transaction = {
-    id: crypto.randomUUID(),
-    type: input.type as TransactionType,
-    amount: Number(input.amount),
-    category: String(input.category),
-    date: String(input.date),
-    description: typeof input.description === 'string' ? input.description.trim() : '',
-    createdAt: new Date().toISOString(),
-  }
-  transactions.push(t)
-  return t
+export async function createTransaction(input: NewTransactionInput): Promise<Transaction> {
+  return prisma.transaction.create({
+    data: {
+      type: input.type as TransactionType,
+      amount: Number(input.amount),
+      category: String(input.category),
+      date: String(input.date),
+      description: typeof input.description === 'string' ? input.description.trim() : '',
+    },
+  })
 }
 
 const VALID_TYPES: TransactionType[] = ['income', 'expense']

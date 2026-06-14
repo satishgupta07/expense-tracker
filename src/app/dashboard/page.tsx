@@ -1,23 +1,36 @@
 /**
  * Dashboard Page — "/dashboard"
  *
- * Server Component — renders on the server, no 'use client' needed.
+ * Server Component — runs on the server, fetches directly from the database
+ * via Prisma, and ships only the resulting HTML to the browser. No
+ * `useEffect`, no client-side fetch, no loading spinner.
  *
- * Currently shows placeholder data.
- * In Step 8 we'll replace the hardcoded values with real data
- * fetched from the database using Prisma.
+ * Step 8 wired the summary cards and the Recent Transactions section to real
+ * data. The all-time totals come from a single grouped SQL query; the recent
+ * list is the 5 newest transactions.
  *
- * Layout:
- *   - 3 summary cards (Balance, Income, Expenses)
- *   - Recent transactions list (coming later)
- *   - Pie chart (coming later)
+ * `force-dynamic` opts out of static prerendering so each request reads fresh
+ * numbers — the Prisma call already does this implicitly in Next 16, but
+ * being explicit makes the intent clear.
  */
 
-export const metadata = {
-  title: "Dashboard | Expense Tracker",
-};
+import TransactionList from '@/components/TransactionList'
+import { getDashboardStats } from '@/lib/transactions'
 
-export default function DashboardPage() {
+export const metadata = {
+  title: 'Dashboard | Expense Tracker',
+}
+
+export const dynamic = 'force-dynamic'
+
+const currency = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+})
+
+export default async function DashboardPage() {
+  const { income, expenses, balance, recent } = await getDashboardStats()
+
   return (
     <div>
 
@@ -30,48 +43,58 @@ export default function DashboardPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
 
-        {/* Total Balance */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-medium text-slate-500">Total Balance</p>
             <span className="text-2xl">💳</span>
           </div>
-          <p className="text-3xl font-bold text-slate-900">$0.00</p>
-          <p className="mt-2 text-xs text-slate-400">Updated just now</p>
+          <p
+            className={`text-3xl font-bold tabular-nums ${
+              balance < 0 ? 'text-rose-500' : 'text-slate-900'
+            }`}
+          >
+            {currency.format(balance)}
+          </p>
+          <p className="mt-2 text-xs text-slate-400">All time</p>
         </div>
 
-        {/* Total Income */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-medium text-slate-500">Total Income</p>
             <span className="text-2xl">📈</span>
           </div>
-          <p className="text-3xl font-bold text-emerald-600">$0.00</p>
-          <p className="mt-2 text-xs text-slate-400">This month</p>
+          <p className="text-3xl font-bold text-emerald-600 tabular-nums">
+            {currency.format(income)}
+          </p>
+          <p className="mt-2 text-xs text-slate-400">All time</p>
         </div>
 
-        {/* Total Expenses */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-medium text-slate-500">Total Expenses</p>
             <span className="text-2xl">📉</span>
           </div>
-          <p className="text-3xl font-bold text-rose-500">$0.00</p>
-          <p className="mt-2 text-xs text-slate-400">This month</p>
+          <p className="text-3xl font-bold text-rose-500 tabular-nums">
+            {currency.format(expenses)}
+          </p>
+          <p className="mt-2 text-xs text-slate-400">All time</p>
         </div>
 
       </div>
 
-      {/* Recent Transactions placeholder */}
+      {/* Recent Transactions */}
       <div className="mt-8 bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
         <h2 className="text-lg font-semibold text-slate-800 mb-4">Recent Transactions</h2>
-        <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-          <span className="text-4xl mb-3">📭</span>
-          <p className="text-sm">No transactions yet</p>
-          <p className="text-xs mt-1">Add your first expense to get started</p>
-        </div>
+        <TransactionList
+          transactions={recent}
+          emptyMessage={{
+            icon: '📭',
+            title: 'No transactions yet',
+            subtitle: 'Add your first expense to get started',
+          }}
+        />
       </div>
 
     </div>
-  );
+  )
 }

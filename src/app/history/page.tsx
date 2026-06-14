@@ -1,44 +1,50 @@
 /**
  * History Page — "/history"
  *
- * Server Component — will use SSR to fetch fresh data on every request.
+ * Server Component — fetches the full transaction list from Prisma on every
+ * request and renders it server-side. Step 8 covers the read-only view;
+ * Step 8b adds the filter bar and delete button on top.
  *
- * In Step 8 we'll replace the placeholder with:
- *   - Full list of all transactions from the database
- *   - Filter bar (by type, category, date)
- *   - Delete transaction button
+ * `force-dynamic` ensures the page re-fetches on every visit; without it,
+ * Next 16 might prerender the page at build time and show stale data.
  */
 
-export const metadata = {
-  title: "History | Expense Tracker",
-};
+import TransactionList from '@/components/TransactionList'
+import { listTransactions } from '@/lib/transactions'
 
-export default function HistoryPage() {
+export const metadata = {
+  title: 'History | Expense Tracker',
+}
+
+export const dynamic = 'force-dynamic'
+
+export default async function HistoryPage() {
+  const transactions = await listTransactions()
+
   return (
     <div>
 
       {/* Page Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900">History</h1>
-        <p className="mt-1 text-slate-500">All your past transactions</p>
+        <p className="mt-1 text-slate-500">
+          {transactions.length === 0
+            ? 'All your past transactions'
+            : `${transactions.length} transaction${transactions.length === 1 ? '' : 's'} on record`}
+        </p>
       </div>
 
-      {/* Filter Bar Placeholder */}
-      <div className="flex gap-3 mb-6">
-        <div className="h-10 w-32 bg-white border border-slate-200 rounded-lg animate-pulse" />
-        <div className="h-10 w-32 bg-white border border-slate-200 rounded-lg animate-pulse" />
-        <div className="h-10 w-32 bg-white border border-slate-200 rounded-lg animate-pulse" />
-      </div>
-
-      {/* Transactions List Placeholder */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-        <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-          <span className="text-4xl mb-3">📂</span>
-          <p className="text-sm">No transactions yet</p>
-          <p className="text-xs mt-1">Transactions will appear here once you add them</p>
-        </div>
+        <TransactionList
+          transactions={transactions}
+          emptyMessage={{
+            icon: '📂',
+            title: 'No transactions yet',
+            subtitle: 'Transactions will appear here once you add them',
+          }}
+        />
       </div>
 
     </div>
-  );
+  )
 }

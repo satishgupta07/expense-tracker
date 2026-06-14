@@ -361,6 +361,46 @@ npm run db:studio     # browse data in a GUI
 
 ---
 
+### 8. Connect UI to Database
+**What:** Replace the placeholder UI on `/dashboard` and `/history` with live data fetched from Prisma. Both pages stay Server Components — Next.js lets them `await` the database directly, with no `useEffect` or client-side fetch.
+
+**Key files created / changed:**
+- `src/components/TransactionList.tsx` — shared list rendering for both pages (Server Component)
+- `src/lib/transactions.ts` — adds `getDashboardStats()` (grouped totals + recent rows in one round-trip)
+- `src/app/dashboard/page.tsx` — async Server Component, real numbers
+- `src/app/history/page.tsx` — async Server Component, full list
+
+**Key learning — async Server Components:**
+```tsx
+// src/app/dashboard/page.tsx
+export default async function DashboardPage() {
+  const { income, expenses, balance, recent } = await getDashboardStats()
+  return <div>...</div>
+}
+```
+The `async` here is what plain React doesn't allow. Because the component runs only on the server, awaiting a database query is fine — the HTML isn't sent until the data resolves. The browser never sees the loading state.
+
+**Aggregating in the database, not in Node:**
+```ts
+const totals = await prisma.transaction.groupBy({
+  by: ['type'],
+  _sum: { amount: true },
+})
+```
+`groupBy` produces one row per `type` ("income" / "expense") with the sum already computed. SQLite does the heavy lifting; we don't pull every transaction into Node to add them up.
+
+**Static vs. dynamic rendering:**
+```ts
+export const dynamic = 'force-dynamic'
+```
+By default, Next 16 may try to **prerender** a Server Component at build time. A dashboard that read from SQLite at build time would always show zero in production. `force-dynamic` opts the page into per-request rendering. (You could also opt in by reading runtime APIs like `headers()` or `cookies()` — `force-dynamic` is just the most explicit way.)
+
+**Deferred to Step 8b:**
+- A filter bar on `/history` (type, category, date range) driven by URL search params
+- Per-row Delete button + `DELETE /api/expenses/[id]` Route Handler
+
+---
+
 ## Project Structure
 
 ```
@@ -381,7 +421,8 @@ expense-tracker/
 │   │       └── expenses/route.ts   ← GET + POST /api/expenses
 │   ├── components/
 │   │   ├── Navbar.tsx              ← Shared navigation bar
-│   │   └── ExpenseForm.tsx         ← Client Component form
+│   │   ├── ExpenseForm.tsx         ← Client Component form
+│   │   └── TransactionList.tsx     ← Shared list (Server Component)
 │   ├── generated/
 │   │   └── prisma/                 ← Generated Prisma client (gitignored)
 │   └── lib/
@@ -407,6 +448,6 @@ expense-tracker/
 | 5 | Add Expense Form (Client Components) | Done |
 | 6 | API Routes (Route Handlers) | Done |
 | 7 | Database with Prisma | Done |
-| 8 | Connect UI to Database | Upcoming |
+| 8 | Connect UI to Database | Done (read-only — filter + delete deferred to 8b) |
 | 9 | Authentication with NextAuth | Upcoming |
 | 10 | Charts with Recharts | Upcoming |

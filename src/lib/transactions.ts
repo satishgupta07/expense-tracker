@@ -34,6 +34,33 @@ export async function listTransactions(): Promise<Transaction[]> {
   })
 }
 
+export interface DashboardStats {
+  income: number
+  expenses: number
+  balance: number
+  recent: Transaction[]
+}
+
+// Used by /dashboard. One round-trip per dataset (totals + recent list).
+// `groupBy` aggregates in the database so we don't pull every row into Node.
+export async function getDashboardStats(recentLimit = 5): Promise<DashboardStats> {
+  const [totals, recent] = await Promise.all([
+    prisma.transaction.groupBy({
+      by: ['type'],
+      _sum: { amount: true },
+    }),
+    prisma.transaction.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: recentLimit,
+    }),
+  ])
+
+  const income = totals.find(t => t.type === 'income')?._sum.amount ?? 0
+  const expenses = totals.find(t => t.type === 'expense')?._sum.amount ?? 0
+
+  return { income, expenses, balance: income - expenses, recent }
+}
+
 export async function createTransaction(input: NewTransactionInput): Promise<Transaction> {
   return prisma.transaction.create({
     data: {

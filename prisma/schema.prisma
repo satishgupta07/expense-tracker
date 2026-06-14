@@ -16,6 +16,19 @@ datasource db {
   provider = "sqlite"
 }
 
+// A registered user (Step 9). Credentials-only — we store a bcrypt
+// `passwordHash` rather than the password itself. OAuth providers would
+// need extra tables (Account, Session, VerificationToken), so we leave
+// those out until they're needed.
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime      @default(now())
+  transactions Transaction[]
+}
+
 // A single income or expense entry.
 //
 // Notes:
@@ -25,6 +38,7 @@ datasource db {
 //   so it isn't shifted by timezone conversion.
 // - `createdAt` is the server-side insert time (DateTime — Response.json()
 //   serializes it to an ISO string for the wire).
+// - `userId` (Step 9) scopes every row to a user. Deleting a user cascades.
 model Transaction {
   id          String   @id @default(uuid())
   type        String
@@ -34,5 +48,8 @@ model Transaction {
   description String   @default("")
   createdAt   DateTime @default(now())
 
-  @@index([createdAt])
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }

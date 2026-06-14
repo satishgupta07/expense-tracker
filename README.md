@@ -451,6 +451,92 @@ router.refresh()    // re-runs Server Component data fetch — no full reload
 
 ---
 
+### 9. Authentication with Auth.js (Credentials) + per-user data
+**What:** Add email/password sign-up and sign-in using **Auth.js v5** (NextAuth's successor), scope every transaction to its owner, and gate every page behind a Next.js middleware.
+
+**Key files created:**
+- `src/auth.ts` — Auth.js config with the Credentials provider + JWT session callbacks
+- `src/middleware.ts` — redirects anonymous users to `/sign-in` for every page route
+- `src/app/api/auth/[...nextauth]/route.ts` — Auth.js catch-all handler (sign-in / sign-out / session)
+- `src/app/api/auth/signup/route.ts` — user-creation endpoint (bcrypt-hashed password)
+- `src/app/sign-in/page.tsx`, `src/app/sign-up/page.tsx` — Server Component shells
+- `src/components/SignInForm.tsx`, `src/components/SignUpForm.tsx` — Client Components
+- `src/components/SignOutButton.tsx` — calls `signOut()` from `next-auth/react`
+- `src/types/next-auth.d.ts` — augments `session.user.id` into the Auth.js types
+
+**Schema (Step 9 migration):**
+```prisma
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime @default(now())
+  transactions Transaction[]
+}
+
+model Transaction {
+  // ...existing fields...
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+}
+```
+`onDelete: Cascade` means deleting a User automatically drops all of their Transaction rows — no orphan data.
+
+**Auth.js v5 — what's different from NextAuth v4:**
+1. **Single config, multiple exports.** `NextAuth(config)` returns `{ handlers, auth, signIn, signOut }`. The handler goes into `route.ts`; `auth()` is what Server Components / Route Handlers call to read the session.
+2. **Built-in middleware.** `auth` can be used directly as Next.js middleware — it surfaces the session on `req.auth`.
+3. **Env inference.** `AUTH_SECRET`, `AUTH_GITHUB_ID`, etc. are picked up automatically. Generate the secret with `npx auth secret`.
+
+**JWT sessions for Credentials:**
+The Credentials provider requires `session: { strategy: 'jwt' }`. We stuff the user id into the JWT in the `jwt` callback and read it back in the `session` callback so every consumer can rely on `session.user.id`.
+
+**Per-user scoping (the store layer enforces it):**
+```ts
+// before — anyone could read anyone's rows
+export async function listTransactions(filters) { ... }
+
+// after — userId is the first argument, baked into every where clause
+export async function listTransactions(userId: string, filters) {
+  return prisma.transaction.findMany({ where: { userId, ...filters }, ... })
+}
+
+// delete checks ownership inside the same query
+export async function deleteTransaction(userId: string, id: string) {
+  const { count } = await prisma.transaction.deleteMany({ where: { id, userId } })
+  return count > 0
+}
+```
+The handler reads the session and passes the id in. If anyone forgets, TypeScript yells.
+
+**Route Handlers and pages now always start with:**
+```ts
+const session = await auth()
+if (!session?.user?.id) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+```
+Pages do the same dance but call `redirect('/sign-in?callbackUrl=…')` instead of returning a 401.
+
+**Middleware route protection:**
+```ts
+// src/middleware.ts
+export default auth(req => {
+  const isAuthed = Boolean(req.auth?.user)
+  if (!isAuthed && !PUBLIC_PATHS.includes(req.nextUrl.pathname)) {
+    return NextResponse.redirect(new URL('/sign-in?callbackUrl=' + req.nextUrl.pathname, req.nextUrl))
+  }
+})
+
+export const config = {
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+}
+```
+The matcher excludes `/api/*` because we want API routes to return JSON 401s, not HTML redirects.
+
+> **Good to know — env:** generate a real secret with `npx auth secret` and set `AUTH_SECRET=` in `.env` (the placeholder string here is dev-only).
+
+---
+
 ## Project Structure
 
 ```
@@ -467,16 +553,26 @@ expense-tracker/
 │   │   ├── dashboard/page.tsx      ← "/dashboard"
 │   │   ├── add-expense/page.tsx    ← "/add-expense"
 │   │   ├── history/page.tsx        ← "/history"
+│   │   ├── sign-in/page.tsx        ← "/sign-in"
+│   │   ├── sign-up/page.tsx        ← "/sign-up"
 │   │   └── api/
+│   │       ├── auth/
+│   │       │   ├── [...nextauth]/route.ts  ← Auth.js handlers
+│   │       │   └── signup/route.ts         ← POST /api/auth/signup
 │   │       └── expenses/
 │   │           ├── route.ts        ← GET + POST /api/expenses
 │   │           └── [id]/route.ts   ← DELETE /api/expenses/:id
+│   ├── auth.ts                         ← Auth.js v5 config
+│   ├── middleware.ts                   ← Route protection
 │   ├── components/
 │   │   ├── Navbar.tsx                  ← Shared navigation bar
 │   │   ├── ExpenseForm.tsx             ← Client Component form
 │   │   ├── TransactionList.tsx         ← Shared list (Server Component)
 │   │   ├── HistoryFilters.tsx          ← Filter form (Server Component)
-│   │   └── DeleteTransactionButton.tsx ← Per-row delete (Client Component)
+│   │   ├── DeleteTransactionButton.tsx ← Per-row delete (Client Component)
+│   │   ├── SignInForm.tsx              ← Sign-in form (Client Component)
+│   │   ├── SignUpForm.tsx              ← Sign-up form (Client Component)
+│   │   └── SignOutButton.tsx           ← Sign-out (Client Component)
 │   ├── generated/
 │   │   └── prisma/                 ← Generated Prisma client (gitignored)
 │   └── lib/
@@ -504,5 +600,5 @@ expense-tracker/
 | 7 | Database with Prisma | Done |
 | 8 | Connect UI to Database | Done (read-only) |
 | 8b | History filters + delete | Done |
-| 9 | Authentication with NextAuth | Upcoming |
+| 9 | Authentication with Auth.js | Done |
 | 10 | Charts with Recharts | Upcoming |

@@ -14,6 +14,7 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import { auth } from "@/auth";
 
 // next/font loads and optimizes the font automatically — no external CSS needed
 const geist = Geist({
@@ -26,17 +27,22 @@ export const metadata: Metadata = {
   description: "Track your income and expenses easily",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode; // children = the currently active page
 }>) {
+  // Read the session once on the server and pass it to the Navbar so the
+  // navbar can branch between "Sign In" and "Hello, <name>" without doing
+  // its own auth() call on every render.
+  const session = await auth();
+
   return (
     <html lang="en" className={geist.className}>
       <body className="min-h-screen bg-slate-50 text-slate-900">
 
         {/* Navbar renders on every page */}
-        <Navbar />
+        <Navbar session={session} />
 
         {/* Page content — constrained width, centered */}
         <main className="max-w-5xl mx-auto px-6 py-8">

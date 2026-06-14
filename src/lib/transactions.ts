@@ -1,10 +1,9 @@
 /**
- * Transaction store — backed by Prisma + SQLite (Step 7).
+ * Transaction store — backed by Prisma + SQLite (Step 7), per-user (Step 9).
  *
- * The Step 6 version of this file kept transactions in an in-memory array.
- * Step 7 swaps the storage layer for a real database without changing the
- * function names, so the Route Handler at src/app/api/expenses/route.ts only
- * needs to `await` the now-async helpers.
+ * Every read and write takes a `userId` and filters on it, so even with one
+ * shared SQLite file each session only sees its own rows. The route handlers
+ * and Server Components above read `auth()` and pass the id in.
  *
  * `validateTransaction` stays synchronous — it inspects the request body
  * and never touches the database.
@@ -38,8 +37,8 @@ export interface TransactionFilters {
 // All filters are optional. Empty strings (the natural value of an unset
 // `<select>` or text input) are treated the same as `undefined`. Filtering
 // happens in SQL so we don't pull every row into Node.
-export async function listTransactions(filters: TransactionFilters = {}): Promise<Transaction[]> {
-  const where: Record<string, unknown> = {}
+export async function listTransactions(userId: string, filters: TransactionFilters = {}): Promise<Transaction[]> {
+  const where: Record<string, unknown> = { userId }
   if (filters.type === 'income' || filters.type === 'expense') where.type = filters.type
   if (filters.category && filters.category.length > 0) where.category = filters.category
   if (filters.from || filters.to) {
@@ -54,8 +53,25 @@ export async function listTransactions(filters: TransactionFilters = {}): Promis
   })
 }
 
-export async function deleteTransaction(id: string): Promise<void> {
-  await prisma.transaction.delete({ where: { id } })
+export async function createTransaction(userId: string, input: NewTransactionInput): Promise<Transaction> {
+  return prisma.transaction.create({
+    data: {
+      userId,
+      type: input.type as TransactionType,
+      amount: Number(input.amount),
+      category: String(input.category),
+      date: String(input.date),
+      description: typeof input.description === 'string' ? input.description.trim() : '',
+    },
+  })
+}
+
+// Returns `true` if a row owned by the user was deleted, `false` otherwise.
+// Doing the ownership check inside `deleteMany` prevents one user from
+// guessing another user's id and erasing it.
+export async function deleteTransaction(userId: string, id: string): Promise<boolean> {
+  const { count } = await prisma.transaction.deleteMany({ where: { id, userId } })
+  return count > 0
 }
 
 export interface DashboardStats {
@@ -67,13 +83,15 @@ export interface DashboardStats {
 
 // Used by /dashboard. One round-trip per dataset (totals + recent list).
 // `groupBy` aggregates in the database so we don't pull every row into Node.
-export async function getDashboardStats(recentLimit = 5): Promise<DashboardStats> {
+export async function getDashboardStats(userId: string, recentLimit = 5): Promise<DashboardStats> {
   const [totals, recent] = await Promise.all([
     prisma.transaction.groupBy({
       by: ['type'],
+      where: { userId },
       _sum: { amount: true },
     }),
     prisma.transaction.findMany({
+      where: { userId },
       orderBy: { createdAt: 'desc' },
       take: recentLimit,
     }),
@@ -83,18 +101,6 @@ export async function getDashboardStats(recentLimit = 5): Promise<DashboardStats
   const expenses = totals.find(t => t.type === 'expense')?._sum.amount ?? 0
 
   return { income, expenses, balance: income - expenses, recent }
-}
-
-export async function createTransaction(input: NewTransactionInput): Promise<Transaction> {
-  return prisma.transaction.create({
-    data: {
-      type: input.type as TransactionType,
-      amount: Number(input.amount),
-      category: String(input.category),
-      date: String(input.date),
-      description: typeof input.description === 'string' ? input.description.trim() : '',
-    },
-  })
 }
 
 const VALID_TYPES: TransactionType[] = ['income', 'expense']

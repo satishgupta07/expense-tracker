@@ -11,8 +11,11 @@
  * filtering happens in SQL, not in Node.
  */
 
+import { redirect } from 'next/navigation'
+
 import HistoryFilters from '@/components/HistoryFilters'
 import TransactionList from '@/components/TransactionList'
+import { auth } from '@/auth'
 import { listTransactions } from '@/lib/transactions'
 import type { TransactionFilters } from '@/lib/transactions'
 
@@ -35,6 +38,9 @@ export default async function HistoryPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+  const session = await auth()
+  if (!session?.user?.id) redirect('/sign-in?callbackUrl=/history')
+
   const params = await searchParams
   const typeParam = pickFirst(params.type)
   const filters: TransactionFilters = {
@@ -44,7 +50,7 @@ export default async function HistoryPage({
     to: pickFirst(params.to),
   }
 
-  const transactions = await listTransactions(filters)
+  const transactions = await listTransactions(session.user.id, filters)
   const isFiltered = Boolean(filters.type || filters.category || filters.from || filters.to)
 
   return (

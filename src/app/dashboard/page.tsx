@@ -14,7 +14,10 @@
  * being explicit makes the intent clear.
  */
 
+import { redirect } from 'next/navigation'
+
 import TransactionList from '@/components/TransactionList'
+import { auth } from '@/auth'
 import { getDashboardStats } from '@/lib/transactions'
 
 export const metadata = {
@@ -29,7 +32,13 @@ const currency = new Intl.NumberFormat('en-US', {
 })
 
 export default async function DashboardPage() {
-  const { income, expenses, balance, recent } = await getDashboardStats()
+  // The middleware already gates this route, but reading the session here
+  // is what gives us the userId to scope queries. The redirect is a
+  // belt-and-suspenders fallback in case middleware misses an edge case.
+  const session = await auth()
+  if (!session?.user?.id) redirect('/sign-in?callbackUrl=/dashboard')
+
+  const { income, expenses, balance, recent } = await getDashboardStats(session.user.id)
 
   return (
     <div>

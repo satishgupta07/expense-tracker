@@ -537,6 +537,65 @@ The matcher excludes `/api/*` because we want API routes to return JSON 401s, no
 
 ---
 
+### 10. Charts with Recharts
+**What:** Add a per-category expense pie chart to the dashboard using **Recharts**.
+
+**Key files created / changed:**
+- `src/components/ExpensePieChart.tsx` — Client Component (Recharts needs the DOM)
+- `src/lib/transactions.ts` — adds `getExpenseBreakdown(userId)` (SQL `groupBy` over `expense` rows)
+- `src/app/dashboard/page.tsx` — fetches breakdown in parallel with the existing stats and renders the chart in a side-by-side grid with Recent Transactions
+
+**Why the chart is a Client Component:**
+Recharts paints SVG using browser DOM APIs (`getBoundingClientRect`, `ResizeObserver`, …). Trying to render it inside a Server Component would crash at build time. The pattern we use everywhere else also applies here: **fetch the data on the server, pass plain JSON to the Client Component, let it handle the visual.**
+
+```tsx
+// Server Component
+const breakdown = await getExpenseBreakdown(session.user.id)
+return <ExpensePieChart data={breakdown} />
+```
+
+```tsx
+'use client'
+// Client Component
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+
+export default function ExpensePieChart({ data }: { data: CategoryBreakdownEntry[] }) {
+  return (
+    <ResponsiveContainer width="100%" height={320}>
+      <PieChart>
+        <Pie data={data} dataKey="amount" nameKey="category" innerRadius={60} outerRadius={110}>
+          {data.map((d, i) => <Cell key={d.category} fill={COLORS[i % COLORS.length]} />)}
+        </Pie>
+        <Tooltip />
+        <Legend />
+      </PieChart>
+    </ResponsiveContainer>
+  )
+}
+```
+
+**Aggregating in the database, not in Node:**
+```ts
+const rows = await prisma.transaction.groupBy({
+  by: ['category'],
+  where: { userId, type: 'expense' },
+  _sum: { amount: true },
+  orderBy: { _sum: { amount: 'desc' } },
+})
+```
+Same pattern as Step 8's `groupBy` for income/expense totals — SQLite returns one row per category with the sum already computed.
+
+**Parallel fetches in the page:**
+```ts
+const [{ income, expenses, balance, recent }, breakdown] = await Promise.all([
+  getDashboardStats(session.user.id),
+  getExpenseBreakdown(session.user.id),
+])
+```
+Both queries leave together and the page renders when the slower one returns.
+
+---
+
 ## Project Structure
 
 ```
@@ -572,7 +631,8 @@ expense-tracker/
 │   │   ├── DeleteTransactionButton.tsx ← Per-row delete (Client Component)
 │   │   ├── SignInForm.tsx              ← Sign-in form (Client Component)
 │   │   ├── SignUpForm.tsx              ← Sign-up form (Client Component)
-│   │   └── SignOutButton.tsx           ← Sign-out (Client Component)
+│   │   ├── SignOutButton.tsx           ← Sign-out (Client Component)
+│   │   └── ExpensePieChart.tsx         ← Dashboard pie chart (Client Component)
 │   ├── generated/
 │   │   └── prisma/                 ← Generated Prisma client (gitignored)
 │   └── lib/
@@ -601,4 +661,4 @@ expense-tracker/
 | 8 | Connect UI to Database | Done (read-only) |
 | 8b | History filters + delete | Done |
 | 9 | Authentication with Auth.js | Done |
-| 10 | Charts with Recharts | Upcoming |
+| 10 | Charts with Recharts | Done |

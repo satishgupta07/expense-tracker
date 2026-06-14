@@ -16,9 +16,10 @@
 
 import { redirect } from 'next/navigation'
 
+import ExpensePieChart from '@/components/ExpensePieChart'
 import TransactionList from '@/components/TransactionList'
 import { auth } from '@/auth'
-import { getDashboardStats } from '@/lib/transactions'
+import { getDashboardStats, getExpenseBreakdown } from '@/lib/transactions'
 
 export const metadata = {
   title: 'Dashboard | Expense Tracker',
@@ -38,7 +39,12 @@ export default async function DashboardPage() {
   const session = await auth()
   if (!session?.user?.id) redirect('/sign-in?callbackUrl=/dashboard')
 
-  const { income, expenses, balance, recent } = await getDashboardStats(session.user.id)
+  // Two independent SQL aggregations run in parallel — totals/recent and
+  // the per-category breakdown for the chart.
+  const [{ income, expenses, balance, recent }, breakdown] = await Promise.all([
+    getDashboardStats(session.user.id),
+    getExpenseBreakdown(session.user.id),
+  ])
 
   return (
     <div>
@@ -91,17 +97,26 @@ export default async function DashboardPage() {
 
       </div>
 
-      {/* Recent Transactions */}
-      <div className="mt-8 bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-        <h2 className="text-lg font-semibold text-slate-800 mb-4">Recent Transactions</h2>
-        <TransactionList
-          transactions={recent}
-          emptyMessage={{
-            icon: '📭',
-            title: 'No transactions yet',
-            subtitle: 'Add your first expense to get started',
-          }}
-        />
+      {/* Chart + Recent Transactions side-by-side on wide screens */}
+      <div className="mt-8 grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+        <div className="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h2 className="text-lg font-semibold text-slate-800 mb-4">Expenses by Category</h2>
+          <ExpensePieChart data={breakdown} />
+        </div>
+
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h2 className="text-lg font-semibold text-slate-800 mb-4">Recent Transactions</h2>
+          <TransactionList
+            transactions={recent}
+            emptyMessage={{
+              icon: '📭',
+              title: 'No transactions yet',
+              subtitle: 'Add your first expense to get started',
+            }}
+          />
+        </div>
+
       </div>
 
     </div>

@@ -81,6 +81,25 @@ export interface DashboardStats {
   recent: Transaction[]
 }
 
+export interface CategoryBreakdownEntry {
+  category: string
+  amount: number
+}
+
+// Per-category expense totals, biggest first. Sums in SQL via `groupBy`; the
+// dashboard pie chart consumes this directly.
+export async function getExpenseBreakdown(userId: string): Promise<CategoryBreakdownEntry[]> {
+  const rows = await prisma.transaction.groupBy({
+    by: ['category'],
+    where: { userId, type: 'expense' },
+    _sum: { amount: true },
+    orderBy: { _sum: { amount: 'desc' } },
+  })
+  return rows
+    .map(r => ({ category: r.category, amount: r._sum.amount ?? 0 }))
+    .filter(r => r.amount > 0)
+}
+
 // Used by /dashboard. One round-trip per dataset (totals + recent list).
 // `groupBy` aggregates in the database so we don't pull every row into Node.
 export async function getDashboardStats(userId: string, recentLimit = 5): Promise<DashboardStats> {
